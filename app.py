@@ -1,49 +1,77 @@
 #pip install accelerate diffusers transformers torch
+import requests
+import random
+import subprocess
+import sys
 from diffusers import StableDiffusionPipeline
 import torch
 import os
 
-def generate_images_with_stable_diffusion(prompts, output_directory):
-    """
-    Generate images for given prompts using Stable Diffusion.
+def install_dependencies():
+    dependencies = ["accelerate", "diffusers", "transformers", "torch", "requests"]
+    for package in dependencies:
+        try:
+            __import__(package)
+        except ImportError:
+            print(f"Installing {package}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+# Ensure dependencies are installed
+install_dependencies()
+
+def get_available_models():
+    url = "https://image.pollinations.ai/models"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Failed to fetch models from Pollinations AI.")
+        return []
+
+def download_image(image_url, model, image_num):
+    response = requests.get(image_url)
+    filename = f'{model}-image-{image_num}.jpg'
+    with open(filename, 'wb') as file:
+        file.write(response.content)
+    print(f'Download Completed: {filename}')
+
+def generate_pollinations_images(prompt, num_variations):
+    models = get_available_models()
+    if not models:
+        print("No models found. Exiting Pollinations AI generation.")
+        return
     
-    Args:
-        prompts (list): A list of textual descriptions for the images.
-        output_directory (str): Directory to save the generated images.
-    """
+    for model in models:
+        for i in range(1, num_variations + 1):
+            seed = random.randint(1, 100000)
+            image_url = f"https://pollinations.ai/p/{prompt}?width=768&height=768&seed={seed}&model={model}"
+            download_image(image_url, model, i)
+
+def generate_stable_diffusion_images(prompt, num_variations, output_directory):
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
     
-    # Load Stable Diffusion pipeline
     pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
     pipe.to("cuda" if torch.cuda.is_available() else "cpu")
     
-    for i, prompt in enumerate(prompts):
-        print(f"Generating image for prompt: {prompt}")
+    for i in range(num_variations):
+        print(f"Generating Stable Diffusion image for: {prompt}")
         image = pipe(prompt).images[0]
-        output_path = os.path.join(output_directory, f"image_{i + 1}.png")
+        output_path = os.path.join(output_directory, f"sd_image_{i + 1}.png")
         image.save(output_path)
         print(f"Image saved to {output_path}")
 
 if __name__ == "__main__":
-    # Example prompts
-    prompts = [
-        "A fridge with its door slightly open",
-        "An oven with steam coming out",
-        "A washing machine with clothes inside",
-        "A dishwasher with plates stacked",
-        "A steam cleaner cleaning a 6x9 area rug",
-        "A steam cleaner cleaning a 9x13 area rug",
-        "A staircase being cleaned with a steam cleaner",
-        "An organized cabinet with open doors",
-        "A small additional kitchen with utensils and stove",
-        "A bed with freshly folded sheets",
-        "A steam cleaner on a bedroom carpet",
-        "A paw print symbolizing a pet fee"
-    ]
+    prompt = input("Enter your prompt: ")
+    num_variations = int(input("Enter the number of variations per model: "))
+    choice = input("Would you like to use (1) Pollinations AI, (2) Stable Diffusion, or (3) Both? Enter 1, 2, or 3: ")
     
-    # Output directory
-    output_directory = "stable_diffusion_images"
-    
-    # Generate images
-    generate_images_with_stable_diffusion(prompts, output_directory)
+    if choice == "1":
+        generate_pollinations_images(prompt, num_variations)
+    elif choice == "2":
+        generate_stable_diffusion_images(prompt, num_variations, "sd_images")
+    elif choice == "3":
+        generate_pollinations_images(prompt, num_variations)
+        generate_stable_diffusion_images(prompt, num_variations, "sd_images")
+    else:
+        print("Invalid choice. Exiting.")
